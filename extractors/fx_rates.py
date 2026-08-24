@@ -14,7 +14,9 @@ def fetch_fx_rates(date: str, base: str = "USD", symbols: list[str] | None = Non
     response = requests.get(f"{BASE_URL}/{date}", params=params)
 
     response.raise_for_status()
-    return response.json()
+    data = response.json()
+    data["rate_date"] = data.pop("date")
+    return data
 
 def save_fx_rates(data: dict, date: str) -> None:
     path = f"data/raw/fx_rates/date={date}/"

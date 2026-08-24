@@ -94,6 +94,28 @@ matches ADR for the FX extractor), while different dates produce different-looki
 (more realistic than a static fixture repeated every day). Clearly labeled as synthetic in
 the README so it's never presented as real financial data.
 
+### ADR-008: `rate_date` renamed to avoid Hive-partition column shadowing
+**Context:** while loading raw JSON into DuckDB (Milestone 2), discovered that
+`read_json_auto` auto-detects the `date=value` Hive-style partition folders (ADR-005) and
+injects a `date` column from the folder name — which silently overrode the `date` field
+already present in the fx_rates JSON content, with no error or warning. Confirmed via a
+direct A/B test (`hive_partitioning=true` vs `false` on the same file) that the folder value
+was winning and the actual API-returned date (the forward-filled rate date on weekends) was
+being lost. Caught by comparing the loaded table's output against the raw file's literal
+content, not by assuming the load was correct because it ran without error.
+**Decision:** renamed the field in `fetch_fx_rates()`'s return value from `date` to
+`rate_date` before it's ever saved, removing the name collision entirely.
+**Consequences:** `date` (from the partition) now consistently means "the business date this
+data was requested/reported for" across every raw table. `rate_date` (from content) means
+"the date this specific rate is actually dated from" — and the two columns now visibly
+diverge exactly on weekends/holidays, which is precisely the staleness signal the
+point-in-time FX join (ADR-007) needs. Existing raw fx_rates data was deleted and
+regenerated from the extractor rather than patched in place — raw data is always
+regenerable, never hand-edited.
+**General lesson for future partition-key choices:** never name a partition folder the same
+as a field that already exists in the file's own content — verify loaded output against raw
+file content directly rather than trusting "it ran without error."
+
 ### ADR-007: point-in-time FX join (planned, not yet built)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.

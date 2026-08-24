@@ -80,7 +80,50 @@ contains exactly one file per date afterward, both runs.
 rates while still learning the core partitioning/idempotency pattern. Swapping formats later
 is a contained change, isolated to `save_fx_rates`.
 
-## Up next — Milestone 1 continued / Milestone 2
+### Task 3 (Milestone 1) — synthetic positions extractor
 
-- Second source (positions/transactions) — not started.
-- Load raw JSON into DuckDB raw schema (Milestone 2).
+**Concepts covered:**
+- `random.seed(date)` for deterministic-but-varied synthetic data (same date = same output,
+  different dates = different output). Distinguished from idempotency: seeding controls
+  *what data gets generated*; the file-write pattern separately controls *how safely it gets
+  saved*. Both are needed together.
+- Honest scoping: `random.uniform(1000, 500000)` for position amounts is an arbitrary
+  placeholder for believable mock data, not a claim about how real position sizes are
+  actually distributed (which would be skewed/log-normal in reality, not uniform).
+
+## Milestone 2 — load raw JSON into DuckDB
+
+**Concepts covered:**
+- **DuckDB as an embedded OLAP engine.** No server process — a single file on disk, built
+  for scanning/aggregating rather than many small transactional reads/writes. Can query
+  JSON/CSV/Parquet files directly via `read_json_auto(glob_pattern)` without a manual
+  parsing loop.
+- **`con.sql("...")` pattern.** Every operation is just a SQL string handed to the
+  connection object. A bare `SELECT` only returns a result in memory; `CREATE OR REPLACE
+  TABLE x AS SELECT ...` is what actually persists it into the database file.
+- **Windows console encoding.** `UnicodeEncodeError` when printing DuckDB's `.show()` output
+  — Windows terminals often default to a legacy codepage (`cp1252`) instead of UTF-8, and
+  DuckDB's table-drawing characters aren't in that codepage. Fixed once, in the script
+  itself (`sys.stdout.reconfigure(encoding="utf-8")`), rather than as a one-off terminal
+  workaround, since the same script needs to behave identically inside Airflow later.
+- **DuckDB Hive-partition auto-detection — real bug found and fixed, not a scaffolded one.**
+  See ADR-008 in system-design.md for the full writeup. Short version: naming a partition
+  folder `date=...` (ADR-005) while the file's own JSON content also had a `date` field
+  caused DuckDB to silently substitute the folder's value for the real one, discarding the
+  actual forward-filled rate date with no warning. Found by comparing the loaded table's
+  output against the raw file's literal content (`cat` the file directly) rather than
+  trusting that "the script ran without error" meant the data was correct. Confirmed the
+  root cause with a direct A/B test (`hive_partitioning=true` vs `false`) before fixing.
+  Fixed by renaming the colliding field (`date` -> `rate_date`) at the source, in
+  `fetch_fx_rates()`, and regenerating the raw data rather than patching it by hand.
+
+**Debugging process actually used (reproduce -> isolate -> hypothesize -> confirm -> fix ->
+verify):** noticed the loaded date looked wrong -> compared it against the known-correct
+value from an earlier `fetch_fx_rates` call -> hypothesized a Hive-partitioning collision ->
+confirmed with an A/B DuckDB query before touching any code -> fixed at the source ->
+reloaded and verified both `date` and `rate_date` now appear correctly and diverge exactly
+on the weekend record.
+
+## Up next — Milestone 3
+
+- dbt project init, staging models over `raw.fx_rates` and `raw.positions`.
