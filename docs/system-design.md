@@ -84,7 +84,17 @@ write data. The SQL validator is the first layer of defense, not the only one.
 refuses access to raw/staging data. Not yet implemented — flagged here so it isn't forgotten
 or descoped under time pressure later.
 
-### ADR-007 (planned, not yet built): point-in-time FX join
+### ADR-007b: positions data = deterministic synthetic generator
+**Context:** no free public API exists for company position/holdings data (it's internal to
+a real institution).
+**Decision:** generate synthetic positions with Python's `random`, seeded from the business
+date itself (`random.seed(date)`), not a single global fixed seed.
+**Consequences:** same date always generates the same positions (idempotent, reproducible —
+matches ADR for the FX extractor), while different dates produce different-looking data
+(more realistic than a static fixture repeated every day). Clearly labeled as synthetic in
+the README so it's never presented as real financial data.
+
+### ADR-007: point-in-time FX join (planned, not yet built)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.
 **Decision:** the intermediate join (Milestone 4/5) will use "most recent rate on or before
