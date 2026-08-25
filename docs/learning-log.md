@@ -149,7 +149,31 @@ of hardcoding table names, which is what lets dbt build its dependency graph).
   to confirm only `staging.stg_positions` exists after the fix, and dropped the orphaned
   `main.stg_positions` left over from before the schema config was corrected.
 
-## Up next — Milestone 3 continued
+### Task 2 — `stg_fx_rates.sql`
 
-- `stg_fx_rates.sql` — harder than positions, because `raw.fx_rates.rates` is a nested
-  struct that needs a real reshape decision before it can usefully join against positions.
+**Real design correction found while planning this task (ADR-010):** the extractor
+defaulted to `base=USD`, but the pipeline converts everything *to* EUR — so `base=EUR` is
+what actually gives a direct per-currency rate for every position currency in one call.
+Fixed at the source and regenerated raw data.
+
+**Concepts covered:**
+- **Wide vs long (tall) data shape.** `raw.fx_rates` has one row per date with all
+  currencies side-by-side in a struct (wide). Joining against positions (one currency each)
+  needs one row per date *per currency* (long). `UNION ALL` across one `SELECT` per currency
+  reshapes wide into long.
+- **`UNION ALL` vs `UNION`** — always prefer `ALL` unless deduplication is specifically
+  wanted; plain `UNION` silently drops rows it considers duplicates, which can mask a real
+  bug instead of surfacing it.
+- **DuckDB lowercases JSON struct field names** — `rates.usd`, not `rates.USD`, even though
+  the source JSON had uppercase keys.
+
+**Verified:** 8 rows (2 dates x 4 currencies), correct rates, and `rate_date` still shows the
+forward-filled date distinctly from `date` on the weekend row — the point-in-time signal
+survived the full path from API to staging.
+
+## Up next — Milestone 4/5
+
+- Design (then build) the point-in-time intermediate join: `stg_positions.currency =
+  stg_fx_rates.currency`, matched to the correct `rate_date`, producing EUR-converted
+  position values. This is ADR-007 — the highest-risk part of the whole project — now that
+  both staging models are shaped correctly to support it.
