@@ -139,7 +139,21 @@ Also means every fx_rates row now has a consistent, predictable set of struct fi
 exactly CHF/GBP/JPY/USD, never a subset) — which is what makes a simple, static unpivot into
 staging possible without dynamic SQL generation. Raw data was regenerated, not patched.
 
-### ADR-007: point-in-time FX join (planned, not yet built)
+### ADR-011: intermediate join + marts + tests built
+**Decision:** `int_position_valuations` joins `stg_positions` to `stg_fx_rates` on
+`currency` and `business_date = date` (LEFT JOIN, deliberately — an unmatched position
+becomes a visible NULL, never a silently dropped row). `fct_position_valuation` (table) and
+`rpt_daily_eur_exposure` (table, aggregated) are the marts. 11 dbt tests across staging/marts
+(not_null, unique, accepted_values, one singular test for positive `eur_value`).
+**Consequences:** the "stale date" defect (#4 in the eval table) is **not** caught by any
+current test — it requires a freshness check (dbt source freshness + Airflow SLA), which
+doesn't exist until Milestone 7. Flagged explicitly rather than silently left uncovered.
+**Real finding:** two injected defects on the same row (null rate + negative amount) masked
+each other, since `NULL <= 0` is not true in SQL — the singular test missed it, though a
+different `not_null` test still caught the row for an unrelated reason. See README for the
+full eval table.
+
+### ADR-007: point-in-time FX join (built — see ADR-011)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.
 **Decision:** the intermediate join (Milestone 4/5) will use "most recent rate on or before

@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_positions
+    columns:
+      - name: position_id
+        tests:
+          - not_null
+          - unique
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['USD', 'GBP', 'JPY', 'CHF']
+
+  - name: stg_fx_rates
+    columns:
+      - name: rate
+        tests:
+          - not_null
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['USD', 'GBP', 'JPY', 'CHF']

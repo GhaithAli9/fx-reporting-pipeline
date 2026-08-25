@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: fct_position_valuation
+    columns:
+      - name: position_id
+        tests:
+          - not_null
+          - unique
+      - name: eur_value
+        tests:
+          - not_null

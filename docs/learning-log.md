@@ -171,9 +171,28 @@ Fixed at the source and regenerated raw data.
 forward-filled date distinctly from `date` on the weekend row — the point-in-time signal
 survived the full path from API to staging.
 
-## Up next — Milestone 4/5
+## Milestone 4/5 — intermediate join, marts, tests, defect-injection eval
 
-- Design (then build) the point-in-time intermediate join: `stg_positions.currency =
-  stg_fx_rates.currency`, matched to the correct `rate_date`, producing EUR-converted
-  position values. This is ADR-007 — the highest-risk part of the whole project — now that
-  both staging models are shaped correctly to support it.
+**Concepts covered:**
+- **`ref()`** used for real for the first time — `int_position_valuations` references
+  `stg_positions`/`stg_fx_rates` (other models), not raw sources, extending the DAG one
+  layer further. dbt built all 5 models in the correct order automatically.
+- **`LEFT JOIN` deliberately, not `INNER JOIN`.** An unmatched position becomes a visible
+  `NULL` row instead of silently vanishing — matches the "never silently drop data" theme
+  from the very first architecture review.
+- **Materialization choice:** marts use `+materialized: table` (physically stored — reports
+  get read often, built once), staging/intermediate stay `view` (cheap, always live).
+- **dbt generic tests** (`not_null`, `unique`, `accepted_values`) vs **singular tests**
+  (`tests/assert_positive_eur_value.sql` — a plain `SELECT` of violating rows; the test
+  passes only if it returns zero rows).
+- **Real defect-injection eval, not simulated** (`tests/defect_injection_eval.py`) — 4
+  defects actually injected into raw tables, `dbt test` actually run and actually failed (4
+  errors), then reset by re-running `load_raw.py` (raw is always rebuilt from untouched
+  source JSON, so "undo" is just "reload"). Full results table in README.md.
+- **Real, unplanned finding:** two defects landing on the same row can mask each other
+  (`NULL <= 0` is not true in SQL) — a genuine test-coverage blind spot, not something I set
+  out to demonstrate. Documented honestly rather than hidden.
+- **Known, explicitly flagged gap:** "stale date" isn't caught by any current test — that
+  requires freshness checking, which doesn't exist until the Airflow milestone.
+
+## Up next — Milestone 7 (Airflow), then docs polish
