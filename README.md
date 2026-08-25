@@ -1,11 +1,36 @@
 # fx-reporting-pipeline
 
 An end-to-end ELT pipeline that ingests FX and position data, transforms it into
-audit-ready reporting marts with dbt, orchestrates the flow with Airflow, enforces
-data-quality tests, and exposes a schema-grounded LLM assistant for natural-language
-querying.
+audit-ready reporting marts with dbt, enforces data-quality tests, and is designed to be
+orchestrated with Airflow and queried by a schema-grounded LLM assistant.
 
-Status: under construction (Milestone 0 — environment setup).
+## Status
+
+**Built and verified, with real data at every step:**
+- Two idempotent Python extractors (FX rates from a free live API, synthetic positions),
+  landing date-partitioned raw JSON.
+- DuckDB warehouse, loaded from raw JSON via dbt.
+- dbt project: 2 staging models, 1 intermediate (point-in-time FX join), 2 marts
+  (position-level detail + daily aggregate), 11 passing data-quality tests.
+- A real defect-injection evaluation proving the tests catch bad data — see below.
+
+**Written and code-complete, not yet executed in this environment:**
+- Airflow DAG (`dags/fx_pipeline_dag.py`) — correct task graph, retries, failure callback.
+  Airflow doesn't run natively on Windows (needs Docker or WSL2, neither available on this
+  dev machine) — see `docs/system-design.md` ADR-012 for the full reasoning.
+
+**Not started yet:** NL→SQL LLM assistant, Snowflake port, Docker/CI, BI dashboard.
+
+## How to run
+
+```bash
+./venv/Scripts/python.exe extractors/fx_rates.py
+./venv/Scripts/python.exe extractors/positions.py
+./venv/Scripts/python.exe warehouse/load_raw.py
+cd dbt_project
+../venv/Scripts/dbt.exe run --profiles-dir .
+../venv/Scripts/dbt.exe test --profiles-dir .
+```
 
 ## Data quality: defect-injection evaluation
 
@@ -34,10 +59,13 @@ Reset: `python warehouse/load_raw.py` (raw is always rebuilt from the untouched 
 
 ## Project layout
 
-- `extractors/` — Python scripts that pull raw data from source APIs and land it,
-  partitioned by date, immutably.
-- `dbt_project/` — dbt models: staging (clean/typed) -> intermediate (business logic,
-  e.g. FX conversion) -> marts (reporting-ready tables), plus data-quality tests.
-- `dags/` — Airflow DAG(s) orchestrating extract -> load -> dbt run -> dbt test.
-- `tests/` — Python unit tests (extractors, FX math, SQL validator).
-- `docs/` — system-design.md and runbook.md.
+- `extractors/` — Python scripts that pull raw data (FX rates, synthetic positions) and
+  land it, partitioned by date, idempotently.
+- `warehouse/` — loads raw JSON into DuckDB (`load_raw.py`) and holds the DuckDB file itself.
+- `dbt_project/` — dbt models: staging (clean/typed) -> intermediate (point-in-time FX
+  join) -> marts (reporting-ready tables), plus data-quality tests (`models/*/​_*.yml`,
+  `tests/`).
+- `dags/` — Airflow DAG orchestrating extract -> load -> dbt run -> dbt test (see Status).
+- `tests/` — Python-level tests, including the real defect-injection evaluation.
+- `docs/` — `system-design.md` (architecture decision log), `learning-log.md` (concepts and
+  bugs, task by task), `runbook.md` (operational troubleshooting reference).

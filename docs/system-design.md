@@ -153,6 +153,22 @@ each other, since `NULL <= 0` is not true in SQL — the singular test missed it
 different `not_null` test still caught the row for an unrelated reason. See README for the
 full eval table.
 
+### ADR-012: Airflow DAG written, not executed in this environment
+**Context:** Apache Airflow doesn't officially support running natively on Windows (only via
+WSL2 or Docker), and Docker wasn't installed on this development machine. Given a hard
+time constraint (finishing to apply for a role), attempting a full Docker/WSL2 setup risked
+burning the remaining time on environment issues unrelated to the pipeline itself.
+**Decision:** wrote `dags/fx_pipeline_dag.py` as real, complete, syntax-verified code —
+correct task dependencies (`[extract_fx_rates, extract_positions] >> load_raw >> dbt_run >>
+dbt_test`), retries, and a failure callback — but did not run the Airflow scheduler/webserver
+in this environment.
+**Consequences:** the DAG's logic is reviewable and was validated independently (every task
+it calls — the extractors, `load_raw_tables`, `dbt run`, `dbt test` — was run and verified
+directly, outside Airflow, earlier in this project). What's *not* verified is Airflow's own
+scheduling/retry mechanics against this specific DAG file, which requires Docker or WSL2 to
+set up. Documented honestly rather than claimed as running. Next step: `docker compose`
+based Airflow (the official quickstart), once Docker is available.
+
 ### ADR-007: point-in-time FX join (built — see ADR-011)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.
