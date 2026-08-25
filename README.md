@@ -17,8 +17,11 @@ orchestrated with Airflow and queried by a schema-grounded LLM assistant.
 - **Airflow**, running for real via Docker Compose (`LocalExecutor`, see `docs/system-design.md`
   ADR-012) — full DAG run proven end-to-end: `extract_fx_rates`, `extract_positions`,
   `load_raw`, `dbt_run`, `dbt_test` all reached `success` in Airflow's own task history.
+- **CI** (`.github/workflows/ci.yml`) — runs the full extract/load/dbt pipeline on every
+  push. Verified locally with `act` (simulates GitHub's Actions runners via Docker) before
+  ever pushing — 5 models, 11 tests, passing inside a real simulated runner (ADR-013).
 
-**Not started yet:** NL→SQL LLM assistant, Snowflake port, GitHub Actions CI, BI dashboard.
+**Not started yet:** NL→SQL LLM assistant, Snowflake port, BI dashboard, pytest unit tests.
 
 ## How to run
 

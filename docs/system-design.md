@@ -186,6 +186,19 @@ this machine).
 task history, not just claimed. Screenshots/logs available via `docker compose logs` and the
 webserver UI at `localhost:8081`.
 
+### ADR-013: CI via GitHub Actions, verified locally with `act` before pushing
+**Context:** wanted CI running dbt tests on every push (mirrors the "tests gate merge"
+principle already core to this project), but writing a workflow YAML and hoping it works
+after pushing to GitHub violates the whole verify-don't-assume approach used everywhere else
+here.
+**Decision:** `.github/workflows/ci.yml` runs the same sequence already verified manually
+(extract -> load -> `dbt run` -> `dbt test`) on a fresh checkout, Python 3.12. Downloaded
+`act` (a tool that simulates GitHub's own Actions runners using Docker, which was already
+set up for Airflow) and ran the workflow locally before ever touching GitHub.
+**Consequences:** confirmed for real — 5 dbt models built, 11 tests passed, inside an actual
+simulated Actions runner container, not just "ran fine on my machine." The workflow file
+pushed to GitHub is the exact one already proven to work, not a first attempt.
+
 ### ADR-007: point-in-time FX join (built — see ADR-011)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.

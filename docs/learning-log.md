@@ -227,4 +227,17 @@ survived the full path from API to staging.
 `dbt_run`, `dbt_test` — all reached `success` in Airflow's actual task history, checked via
 `airflow tasks states-for-dag-run`, not assumed from "the containers started."
 
-## Up next — docs polish, then LLM assistant / Snowflake / CI
+## Milestone 13 — CI (GitHub Actions), verified before ever pushing
+
+**Concepts covered:**
+- GitHub Actions: workflow YAML files at `.github/workflows/`, triggered by repo events
+  (push/PR), running on a fresh, stateless machine each time — catches "works on my machine"
+  bugs that manual local verification can't.
+- `act` — a tool that simulates GitHub's Actions runners locally using Docker. Since Docker
+  was already set up for Airflow, this was a small additional step, not new infrastructure.
+- Verified the exact same discipline as everywhere else in this project: don't trust a
+  config file because it looks right, prove it — ran the real workflow locally before
+  pushing anything to GitHub, and it genuinely passed (5 models, 11 tests) inside a real
+  simulated Actions container.
+
+## Up next — docs polish, then LLM assistant / Snowflake

@@ -25,3 +25,6 @@ plugins/
 
 # dbt local machine state (not project source)
 dbt_project/.user.yml
+
+# Downloaded tool binaries (not project source)
+tools/
