@@ -1,0 +1,20 @@
+name: 'fx_reporting'
+version: '1.0.0'
+config-version: 2
+
+profile: 'fx_reporting'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  fx_reporting:
+    staging:
+      +materialized: view
+      +schema: staging

@@ -1,0 +1,7 @@
+fx_reporting:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../warehouse/fx_reporting.duckdb
+      threads: 1

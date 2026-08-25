@@ -124,6 +124,32 @@ confirmed with an A/B DuckDB query before touching any code -> fixed at the sour
 reloaded and verified both `date` and `rate_date` now appear correctly and diverge exactly
 on the weekend record.
 
-## Up next — Milestone 3
+## Milestone 3 — dbt
 
-- dbt project init, staging models over `raw.fx_rates` and `raw.positions`.
+**Setup (mechanical, done by Claude, explained not hand-typed):** `dbt-core` + `dbt-duckdb`
+installed; `dbt_project.yml` (project config, default materialization), `profiles.yml`
+(connection — the only file that changes when we port to Snowflake later, per ADR-002),
+`_sources.yml` (declares `raw.fx_rates`/`raw.positions` so models can use `source()` instead
+of hardcoding table names, which is what lets dbt build its dependency graph).
+
+### Task 1 — `stg_positions.sql`
+
+**Concepts covered:**
+- A dbt model is just a `.sql` file with a `SELECT` — the filename becomes the view/table
+  name, dbt wraps the DDL automatically.
+- **Staging = strict 1:1 cleanup, no business logic.** Explicit column lists instead of
+  `SELECT *`, so staging acts as a contract — a new column appearing upstream doesn't
+  silently flow downstream unnoticed.
+- **dbt's default custom-schema behavior is not what it looks like.** Setting `+schema:
+  staging` in `dbt_project.yml` does **not** put models in a schema literally called
+  `staging` by default — dbt prefixes it with the target schema (`main_staging`). Fixed with
+  the standard `generate_schema_name.sql` macro override (a well-known, documented dbt
+  pattern, not a custom hack) so custom schema names are used literally.
+- Verified with real data, not just "it ran": queried `information_schema.tables` directly
+  to confirm only `staging.stg_positions` exists after the fix, and dropped the orphaned
+  `main.stg_positions` left over from before the schema config was corrected.
+
+## Up next — Milestone 3 continued
+
+- `stg_fx_rates.sql` — harder than positions, because `raw.fx_rates.rates` is a nested
+  struct that needs a real reshape decision before it can usefully join against positions.

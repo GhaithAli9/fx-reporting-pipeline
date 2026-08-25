@@ -1,2 +1,4 @@
 duckdb
 requests
+dbt-core
+dbt-duckdb
