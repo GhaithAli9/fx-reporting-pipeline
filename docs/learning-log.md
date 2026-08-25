@@ -240,4 +240,24 @@ survived the full path from API to staging.
   pushing anything to GitHub, and it genuinely passed (5 models, 11 tests) inside a real
   simulated Actions container.
 
+## Milestone 9 — pytest unit tests
+
+**Concepts covered:**
+- **Mocking** (`unittest.mock.patch`) — replacing `requests.get` with a fake stand-in so
+  tests check the extractor's own logic (URL building, param construction, error handling,
+  the `date`->`rate_date` rename) without depending on the real network being up.
+- `tmp_path` + `monkeypatch.chdir` — standard pytest fixtures for testing functions that
+  write relative-path files (`save_fx_rates`, `save_positions`) without touching the real
+  `data/` folder or needing to change the production code's signature.
+- 8 tests total: request-building, the rate_date rename, HTTP-error propagation, save
+  idempotency (both extractors), plus determinism/shape checks for synthetic positions.
+
+**Real bug found by re-verifying CI, not scaffolded:** adding `pytest tests/ -v` to the CI
+workflow failed with `ModuleNotFoundError: No module named 'extractors'`, even though the
+exact same tests passed locally seconds earlier. Root cause: `python -m pytest` (used
+locally) automatically adds the current directory to Python's import path; plain `pytest`
+(what the CI step ran) does not. Fixed properly with `pytest.ini` (`pythonpath = .`) so it
+works identically regardless of invocation style, rather than just special-casing the CI
+command. Re-verified with `act` a second time before trusting it.
+
 ## Up next — docs polish, then LLM assistant / Snowflake

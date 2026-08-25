@@ -28,3 +28,6 @@ dbt_project/.user.yml
 
 # Downloaded tool binaries (not project source)
 tools/
+
+# pytest cache
+.pytest_cache/

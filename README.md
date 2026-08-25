@@ -21,7 +21,11 @@ orchestrated with Airflow and queried by a schema-grounded LLM assistant.
   push. Verified locally with `act` (simulates GitHub's Actions runners via Docker) before
   ever pushing — 5 models, 11 tests, passing inside a real simulated runner (ADR-013).
 
-**Not started yet:** NL→SQL LLM assistant, Snowflake port, BI dashboard, pytest unit tests.
+- **pytest unit tests** (`tests/test_fx_rates.py`, `tests/test_positions.py`) — 8 tests,
+  mocked HTTP calls (no real network needed), idempotency and determinism checks. Wired into
+  CI.
+
+**Not started yet:** NL→SQL LLM assistant, Snowflake port, BI dashboard.
 
 ## How to run
 
