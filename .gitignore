@@ -17,3 +17,6 @@ dbt_project/dbt_packages/
 
 # Airflow local metadata (once we add it)
 dags/logs/
+
+# dbt local machine state (not project source)
+dbt_project/.user.yml

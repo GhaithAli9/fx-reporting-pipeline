@@ -116,6 +116,16 @@ regenerable, never hand-edited.
 as a field that already exists in the file's own content — verify loaded output against raw
 file content directly rather than trusting "it ran without error."
 
+### ADR-009 (planned, not yet built): `profiles.yml` credentials before Snowflake
+**Context:** `dbt_project/profiles.yml` is currently committed to git — safe today because
+the DuckDB connection has no username/password, just a local file path. This stops being
+safe the moment Snowflake credentials (ADR-002/ADR-012) go into this file.
+**Decision:** before the Snowflake port, switch `profiles.yml` to use dbt's `env_var(...)`
+macro for the credential fields, sourced from `.env` (already git-ignored), instead of
+literal values in the file.
+**Consequences:** flagged now, before it's forgotten under momentum — committing real
+warehouse credentials would be a genuine security incident, not just a style issue.
+
 ### ADR-007: point-in-time FX join (planned, not yet built)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.
