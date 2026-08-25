@@ -260,4 +260,28 @@ locally) automatically adds the current directory to Python's import path; plain
 works identically regardless of invocation style, rather than just special-casing the CI
 command. Re-verified with `act` a second time before trusting it.
 
-## Up next — docs polish, then LLM assistant / Snowflake
+## Milestone 10 — NL->SQL assistant (schema grounding + validation built; LLM calls deferred)
+
+**Concepts covered:**
+- **Schema grounding generated live from the database**, not hand-typed — queries
+  `information_schema.columns` for the `marts` schema on every call, so the prompt can never
+  drift out of sync with reality.
+- **Real SQL parsing (`sqlglot`) instead of regex/keyword matching** for validation — rejects
+  anything that isn't exactly one `SELECT`, walks the full parse tree for write/DDL nodes as
+  defense in depth, restricts table access to the `marts` schema, enforces/caps a row LIMIT.
+  Verified the parser's actual API behavior (`.walk()`, `.find_all()`, limit extraction)
+  against real test calls before writing the final validator, rather than guessing method
+  signatures.
+- **DuckDB's `read_only=True` connection flag** as the actual mechanism for "least-privilege
+  read-only access" — DuckDB has no grantable roles (embedded, single-file database, not
+  client-server), so a read-only connection is the real equivalent of what would be a granted
+  role in Postgres/Snowflake.
+- **Tested the validator against 5 cases with zero LLM calls involved**, including a DELETE
+  attempt and a multi-statement SQL-injection attempt — both correctly rejected — before ever
+  writing the code that calls the actual model.
+- **Deliberate scoping decision:** the actual Claude API calls are written and ready
+  (`llm_assistant/assistant.py` — schema-grounded prompt, structured SQL-only output, one
+  repair loop on failure) but not executed, since doing so costs real money and the priority
+  shifted to finalizing and applying. Documented honestly rather than run once for show.
+
+## Up next — README polish, then push to GitHub

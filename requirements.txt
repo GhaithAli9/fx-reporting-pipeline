@@ -3,3 +3,6 @@ requests
 dbt-core
 dbt-duckdb
 pytest
+anthropic
+sqlglot
+python-dotenv

@@ -73,7 +73,36 @@ recognizable to query engines later (DuckDB, and eventually Snowflake).
 **Consequences:** matches a convention (`date=value` folder naming) that DuckDB, Spark, and
 Athena all auto-recognize for partition pruning — not a project-specific invention.
 
-### ADR-006 (planned, not yet built): least-privilege DB role for the LLM assistant
+### ADR-014: NL->SQL assistant — schema grounding + parser-based validation built
+**Context:** implementing ADR-006's design now. DuckDB has no grantable roles (it's an
+embedded, single-file database, not a client-server one), so "least-privilege read-only
+role" needed a DuckDB-native equivalent.
+**Decision:**
+- `llm_assistant/schema.py` introspects `information_schema.columns` for the `marts` schema
+  live from the database on every call, rather than a hand-typed schema string that could
+  drift out of sync.
+- `llm_assistant/validator.py` uses `sqlglot` (a real SQL parser) instead of regex/keyword
+  matching: rejects anything that isn't exactly one `SELECT` statement, walks the full parse
+  tree for write/DDL node types as defense in depth, restricts table access to the `marts`
+  schema by inspecting each `Table` node's schema qualifier, and enforces/caps a row `LIMIT`.
+- The DuckDB connection the assistant executes against is opened with `read_only=True` --
+  DuckDB's actual mechanism for "this connection cannot write," which is the real equivalent
+  of the least-privilege role originally planned for Postgres/Snowflake.
+**Consequences:** two independent layers, verified separately before wiring together — the
+validator was tested against 5 cases (including a DELETE and a multi-statement SQL
+injection attempt) with zero LLM calls involved, and passed all 5 before the assistant's own
+LLM-calling code was even tested end to end.
+
+**Status: code-complete, not executed against a live API.** `llm_assistant/assistant.py`
+(the actual Claude API calls, orchestration, and one-shot repair loop) is written and ready
+to run, but exercising it costs real (if small) money, and a deliberate decision was made
+not to spend that while finalizing the project to apply. This is the same honest-scoping
+pattern as ADR-012 (Airflow was written before it was actually run) — the schema-grounding
+and validation layers, the parts that don't need paid API calls, *are* fully verified above;
+only the final "call the real model and look at a real answer" step is deferred. Running it
+just needs an `ANTHROPIC_API_KEY` in `.env` — no code changes.
+
+### ADR-006 (built — see ADR-014): least-privilege DB role for the LLM assistant
 **Context:** the NL->SQL assistant (Milestone 10) will execute LLM-generated SQL. Relying
 solely on parsing/regex-filtering the generated SQL for safety is a weak, single-layer
 defense — a parser bug or an unanticipated SQL construct could slip through.
