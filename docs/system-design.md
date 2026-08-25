@@ -126,6 +126,19 @@ literal values in the file.
 **Consequences:** flagged now, before it's forgotten under momentum — committing real
 warehouse credentials would be a genuine security incident, not just a style issue.
 
+### ADR-010: fetch FX rates with `base=EUR`, not `base=USD`
+**Context:** the pipeline's whole purpose is converting positions (held in USD/GBP/JPY/CHF)
+into EUR. The extractor originally defaulted to `base=USD`, which only gives a direct rate
+for USD positions — GBP/JPY/CHF would each need separate cross-rate logic.
+**Decision:** default `fetch_fx_rates` to `base=EUR`, and always request the full fixed set
+of position currencies (`POSITION_CURRENCIES = ["USD","GBP","JPY","CHF"]`) as `symbols`.
+**Consequences:** every position currency now gets a direct "units per 1 EUR" rate in a
+single API call (e.g. `rates.USD = 1.0945` means 1 EUR = 1.0945 USD), so converting any
+position is just `eur_value = amount / rates.<CCY>` — no per-currency special-casing needed.
+Also means every fx_rates row now has a consistent, predictable set of struct fields (always
+exactly CHF/GBP/JPY/USD, never a subset) — which is what makes a simple, static unpivot into
+staging possible without dynamic SQL generation. Raw data was regenerated, not patched.
+
 ### ADR-007: point-in-time FX join (planned, not yet built)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
 (no rate exists) and risks using the wrong rate if not handled explicitly.

@@ -5,7 +5,7 @@ import json
 BASE_URL = "https://api.frankfurter.dev/v1"
 
 
-def fetch_fx_rates(date: str, base: str = "USD", symbols: list[str] | None = None) -> dict:
+def fetch_fx_rates(date: str, base: str = "EUR", symbols: list[str] | None = None) -> dict:
     """Fetch FX rates for a given date (YYYY-MM-DD) from the Frankfurter API."""
     params = {"base": base}
     if symbols:
@@ -25,11 +25,13 @@ def save_fx_rates(data: dict, date: str) -> None:
         json.dump(data, f)
 
 
+POSITION_CURRENCIES = ["USD", "GBP", "JPY", "CHF"]
+
 if __name__ == "__main__":
-    weekday = fetch_fx_rates("2024-01-15", symbols=["EUR", "GBP"])
+    weekday = fetch_fx_rates("2024-01-15", symbols=POSITION_CURRENCIES)
     save_fx_rates(weekday, "2024-01-15")
     print("weekday saved:", weekday)
 
-    weekend = fetch_fx_rates("2024-01-13", symbols=["EUR"])
+    weekend = fetch_fx_rates("2024-01-13", symbols=POSITION_CURRENCIES)
     save_fx_rates(weekend, "2024-01-13")
     print("weekend saved:", weekend)
