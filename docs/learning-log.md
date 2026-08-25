@@ -195,4 +195,36 @@ survived the full path from API to staging.
 - **Known, explicitly flagged gap:** "stale date" isn't caught by any current test — that
   requires freshness checking, which doesn't exist until the Airflow milestone.
 
-## Up next — Milestone 7 (Airflow), then docs polish
+## Milestone 7 — Airflow, running for real via Docker Compose
+
+**Concepts covered:**
+- Downloaded Airflow's own official `docker-compose.yaml` rather than hand-writing one
+  (same principle as the `generate_schema_name.sql` macro earlier — use the documented
+  pattern, don't reinvent it with subtle bugs).
+- Simplified `CeleryExecutor` (postgres + redis + webserver + scheduler + worker + triggerer)
+  down to `LocalExecutor` (postgres + webserver + scheduler only) — a single local DAG
+  doesn't need a distributed task queue.
+- Bind-mounted the whole project into the containers at `/opt/project` so the DAG's bash
+  commands can reach `extractors/`, `dbt_project/`, `warehouse/` directly, same code as runs
+  outside Airflow.
+- `_PIP_ADDITIONAL_REQUIREMENTS` — Airflow's own documented (if "quick checks only") way to
+  install extra Python packages into the containers without building a custom image.
+
+**Real bugs hit and fixed (not scaffolded):**
+1. Port 8080 already bound by something else on the machine — moved Airflow's webserver to
+   8081 rather than debugging what else had it.
+2. `dbt_run` failed inside the container with a `KeyError` on the schema-name macro — a
+   stale `dbt_project/target/` partial-parse cache built from many prior Windows-side runs.
+   Fixed by deleting the cache; **confirmed the fix in isolation** via a direct
+   `docker compose exec` command before trusting an automatic Airflow retry to prove it —
+   same discipline as the earlier Hive-partition bug (verify, don't assume).
+3. Unpausing the DAG triggered an *automatic* scheduled run in addition to the manual
+   trigger (`catchup=False` skips the historical backlog, not the newest interval) — two
+   DAG runs hit `dbt_run` concurrently. Documented honestly as an open concurrency question
+   for a single-writer database like DuckDB, not silently ignored or falsely claimed solved.
+
+**Verified for real:** full DAG run — `extract_fx_rates`, `extract_positions`, `load_raw`,
+`dbt_run`, `dbt_test` — all reached `success` in Airflow's actual task history, checked via
+`airflow tasks states-for-dag-run`, not assumed from "the containers started."
+
+## Up next — docs polish, then LLM assistant / Snowflake / CI

@@ -153,21 +153,38 @@ each other, since `NULL <= 0` is not true in SQL — the singular test missed it
 different `not_null` test still caught the row for an unrelated reason. See README for the
 full eval table.
 
-### ADR-012: Airflow DAG written, not executed in this environment
-**Context:** Apache Airflow doesn't officially support running natively on Windows (only via
-WSL2 or Docker), and Docker wasn't installed on this development machine. Given a hard
-time constraint (finishing to apply for a role), attempting a full Docker/WSL2 setup risked
-burning the remaining time on environment issues unrelated to the pipeline itself.
-**Decision:** wrote `dags/fx_pipeline_dag.py` as real, complete, syntax-verified code —
-correct task dependencies (`[extract_fx_rates, extract_positions] >> load_raw >> dbt_run >>
-dbt_test`), retries, and a failure callback — but did not run the Airflow scheduler/webserver
-in this environment.
-**Consequences:** the DAG's logic is reviewable and was validated independently (every task
-it calls — the extractors, `load_raw_tables`, `dbt run`, `dbt test` — was run and verified
-directly, outside Airflow, earlier in this project). What's *not* verified is Airflow's own
-scheduling/retry mechanics against this specific DAG file, which requires Docker or WSL2 to
-set up. Documented honestly rather than claimed as running. Next step: `docker compose`
-based Airflow (the official quickstart), once Docker is available.
+### ADR-012: Airflow running via Docker Compose (LocalExecutor)
+**Context:** Docker Desktop was installed (WSL2 backend, already enabled on this machine).
+Used Apache Airflow's own published `docker-compose.yaml` (2.10.4) rather than hand-writing
+one, then simplified it: swapped `CeleryExecutor` for `LocalExecutor` and removed
+redis/worker/triggerer/flower entirely, since a single-DAG local demo doesn't need a
+distributed task queue. Added a bind mount of the whole project to `/opt/project` in every
+Airflow container so the DAG's bash commands can reach `extractors/`, `dbt_project/`, and
+`warehouse/` directly. Used `_PIP_ADDITIONAL_REQUIREMENTS` (documented by Airflow as
+appropriate for "quick checks," which matches this use case) to install `duckdb`,
+`dbt-core`, `dbt-duckdb`, `requests` into the containers rather than building a custom image.
+**Decision:** `LocalExecutor` + postgres + webserver + scheduler only, project mounted at
+`/opt/project`, webserver on host port 8081 (8080 was already bound by something else on
+this machine).
+**Real bugs hit and fixed while getting this running:**
+1. Port 8080 conflict — moved the host mapping to 8081 rather than hunting down what else
+   had it.
+2. `dbt_run` failed with `KeyError: 'fx_reporting://macros/generate_schema_name.sql'` — a
+   stale `dbt_project/target/` partial-parse cache, built by many prior runs directly on
+   Windows, became inconsistent when read fresh inside the container. Fixed by deleting
+   `target/` and `logs/` to force a clean parse — confirmed the fix in isolation
+   (`docker compose exec ... dbt run`) before trusting Airflow's automatic retry to prove it.
+3. Unpausing the DAG auto-scheduled the most recent daily interval *in addition to* the
+   manual trigger (`catchup=False` only skips the historical backlog, not the latest run) —
+   two DAG runs executing `dbt_run` concurrently. Not fully resolved (documented, not hidden):
+   this is a real concurrency question for a single-writer embedded database like DuckDB, and
+   the honest answer for now is "don't manually trigger while a scheduled run might also be
+   due" — a proper fix (unique run-scoped DB paths, or a warehouse that handles concurrent
+   writers) is a real hardening item, not solved here.
+**Consequences:** full DAG run proven end-to-end for real — `extract_fx_rates`,
+`extract_positions`, `load_raw`, `dbt_run`, `dbt_test` all reached `success` in Airflow's own
+task history, not just claimed. Screenshots/logs available via `docker compose logs` and the
+webserver UI at `localhost:8081`.
 
 ### ADR-007: point-in-time FX join (built — see ADR-011)
 **Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays

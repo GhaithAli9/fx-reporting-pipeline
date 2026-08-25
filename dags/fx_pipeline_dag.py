@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
 
 
 def alert_on_failure(context) -> None:
@@ -31,27 +30,27 @@ with DAG(
 
     extract_fx_rates = BashOperator(
         task_id="extract_fx_rates",
-        bash_command="python extractors/fx_rates.py",
+        bash_command="cd /opt/project && python extractors/fx_rates.py",
     )
 
     extract_positions = BashOperator(
         task_id="extract_positions",
-        bash_command="python extractors/positions.py",
+        bash_command="cd /opt/project && python extractors/positions.py",
     )
 
-    load_raw = PythonOperator(
+    load_raw = BashOperator(
         task_id="load_raw",
-        python_callable=lambda: __import__("warehouse.load_raw", fromlist=["load_raw_tables"]).load_raw_tables(),
+        bash_command="cd /opt/project && python warehouse/load_raw.py",
     )
 
     dbt_run = BashOperator(
         task_id="dbt_run",
-        bash_command="cd dbt_project && dbt run --profiles-dir .",
+        bash_command="cd /opt/project/dbt_project && dbt run --profiles-dir .",
     )
 
     dbt_test = BashOperator(
         task_id="dbt_test",
-        bash_command="cd dbt_project && dbt test --profiles-dir .",
+        bash_command="cd /opt/project/dbt_project && dbt test --profiles-dir .",
     )
 
     # Extraction can run in parallel (independent sources); loading needs both to finish

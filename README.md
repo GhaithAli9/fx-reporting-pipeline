@@ -14,15 +14,15 @@ orchestrated with Airflow and queried by a schema-grounded LLM assistant.
   (position-level detail + daily aggregate), 11 passing data-quality tests.
 - A real defect-injection evaluation proving the tests catch bad data — see below.
 
-**Written and code-complete, not yet executed in this environment:**
-- Airflow DAG (`dags/fx_pipeline_dag.py`) — correct task graph, retries, failure callback.
-  Airflow doesn't run natively on Windows (needs Docker or WSL2, neither available on this
-  dev machine) — see `docs/system-design.md` ADR-012 for the full reasoning.
+- **Airflow**, running for real via Docker Compose (`LocalExecutor`, see `docs/system-design.md`
+  ADR-012) — full DAG run proven end-to-end: `extract_fx_rates`, `extract_positions`,
+  `load_raw`, `dbt_run`, `dbt_test` all reached `success` in Airflow's own task history.
 
-**Not started yet:** NL→SQL LLM assistant, Snowflake port, Docker/CI, BI dashboard.
+**Not started yet:** NL→SQL LLM assistant, Snowflake port, GitHub Actions CI, BI dashboard.
 
 ## How to run
 
+**Manually:**
 ```bash
 ./venv/Scripts/python.exe extractors/fx_rates.py
 ./venv/Scripts/python.exe extractors/positions.py
@@ -30,6 +30,14 @@ orchestrated with Airflow and queried by a schema-grounded LLM assistant.
 cd dbt_project
 ../venv/Scripts/dbt.exe run --profiles-dir .
 ../venv/Scripts/dbt.exe test --profiles-dir .
+```
+
+**Orchestrated (Airflow, via Docker):**
+```bash
+cd airflow_docker
+docker compose up airflow-init   # first time only
+docker compose up -d
+# webserver at http://localhost:8081 (user: airflow / pass: airflow, local dev only)
 ```
 
 ## Data quality: defect-injection evaluation
