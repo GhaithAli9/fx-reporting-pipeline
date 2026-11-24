@@ -73,35 +73,6 @@ recognizable to query engines later (DuckDB, and eventually Snowflake).
 **Consequences:** matches a convention (`date=value` folder naming) that DuckDB, Spark, and
 Athena all auto-recognize for partition pruning — not a project-specific invention.
 
-### ADR-014: NL->SQL assistant — schema grounding + parser-based validation built
-**Context:** implementing ADR-006's design now. DuckDB has no grantable roles (it's an
-embedded, single-file database, not a client-server one), so "least-privilege read-only
-role" needed a DuckDB-native equivalent.
-**Decision:**
-- `llm_assistant/schema.py` introspects `information_schema.columns` for the `marts` schema
-  live from the database on every call, rather than a hand-typed schema string that could
-  drift out of sync.
-- `llm_assistant/validator.py` uses `sqlglot` (a real SQL parser) instead of regex/keyword
-  matching: rejects anything that isn't exactly one `SELECT` statement, walks the full parse
-  tree for write/DDL node types as defense in depth, restricts table access to the `marts`
-  schema by inspecting each `Table` node's schema qualifier, and enforces/caps a row `LIMIT`.
-- The DuckDB connection the assistant executes against is opened with `read_only=True` --
-  DuckDB's actual mechanism for "this connection cannot write," which is the real equivalent
-  of the least-privilege role originally planned for Postgres/Snowflake.
-**Consequences:** two independent layers, verified separately before wiring together — the
-validator was tested against 5 cases (including a DELETE and a multi-statement SQL
-injection attempt) with zero LLM calls involved, and passed all 5 before the assistant's own
-LLM-calling code was even tested end to end.
-
-**Status: code-complete, not executed against a live API.** `llm_assistant/assistant.py`
-(the actual Claude API calls, orchestration, and one-shot repair loop) is written and ready
-to run, but exercising it costs real (if small) money, and a deliberate decision was made
-not to spend that while finalizing the project to apply. This is the same honest-scoping
-pattern as ADR-012 (Airflow was written before it was actually run) — the schema-grounding
-and validation layers, the parts that don't need paid API calls, *are* fully verified above;
-only the final "call the real model and look at a real answer" step is deferred. Running it
-just needs an `ANTHROPIC_API_KEY` in `.env` — no code changes.
-
 ### ADR-006 (built — see ADR-014): least-privilege DB role for the LLM assistant
 **Context:** the NL->SQL assistant (Milestone 10) will execute LLM-generated SQL. Relying
 solely on parsing/regex-filtering the generated SQL for safety is a weak, single-layer
@@ -112,6 +83,34 @@ write data. The SQL validator is the first layer of defense, not the only one.
 **Consequences:** even if the validator has a bug, the database itself refuses writes and
 refuses access to raw/staging data. Not yet implemented — flagged here so it isn't forgotten
 or descoped under time pressure later.
+
+### ADR-007: FX join — equality on the requested date, as-of behavior delegated to the source API (built; see ADR-011)
+**Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays,
+because no rate is published for those days. The join needs a rule for which rate applies to
+a position dated on a non-business day. This is the highest-risk part of the project: a wrong
+grain here produces plausible-looking but wrong valuations.
+**Original proposal:** a true as-of join in SQL — "most recent rate on or before the
+position's business date, per currency".
+**Decision (what the code actually does):** `int_position_valuations` does an equality
+`LEFT JOIN` on `currency` and `business_date = date`, where `date` is the *requested* date the
+extractor asked the API for. The as-of behavior is delegated to the source: the Frankfurter API
+forward-fills a non-business day to the most recent prior business day, and the real source date
+is preserved in `rate_date` (see ADR-003 and ADR-008). A weekend position therefore gets Friday's
+rate, and `rate_date <> business_date` makes that staleness visible.
+**Consequences / limitations:**
+- Correctness depends on the extractor having requested a rate for every position
+  `business_date`. A position on a date with no fetched rate row does **not** fall back to an
+  earlier rate: its `eur_value` is NULL and the `not_null` test on
+  `fct_position_valuation.eur_value` fails. The pipeline fails loudly instead of guessing.
+- The as-of logic lives in an external API's behavior, not in the SQL. If that behavior
+  changed, the symptom would be missing rates (caught by the test above), not silently wrong
+  ones.
+- The weekend path through the join is not exercised by the current sample data: sample
+  positions exist only for 2024-01-15 (a weekday), so no position joins to the 2024-01-13
+  (forward-filled) rate row. That path is not covered end to end by any test yet.
+- Not implemented: a SQL-level as-of join (e.g. DuckDB `ASOF JOIN` on `rate_date <=
+  business_date`). That would remove the dependence on the API and on fetching every date, and
+  is the planned improvement, to be paired with a test that has a position on a weekend date.
 
 ### ADR-007b: positions data = deterministic synthetic generator
 **Context:** no free public API exists for company position/holdings data (it's internal to
@@ -228,11 +227,31 @@ set up for Airflow) and ran the workflow locally before ever touching GitHub.
 simulated Actions runner container, not just "ran fine on my machine." The workflow file
 pushed to GitHub is the exact one already proven to work, not a first attempt.
 
-### ADR-007: point-in-time FX join (built — see ADR-011)
-**Context:** naively joining positions to FX rates "on date" breaks on weekends/holidays
-(no rate exists) and risks using the wrong rate if not handled explicitly.
-**Decision:** the intermediate join (Milestone 4/5) will use "most recent rate on or before
-the position's business date, per currency" — designed and written down *before* being
-implemented in SQL.
-**Consequences:** this is the highest-risk part of the whole project; getting the grain
-wrong here would silently produce plausible-but-wrong valuations downstream.
+### ADR-014: NL->SQL assistant — schema grounding + parser-based validation built
+**Context:** implementing ADR-006's design now. DuckDB has no grantable roles (it's an
+embedded, single-file database, not a client-server one), so "least-privilege read-only
+role" needed a DuckDB-native equivalent.
+**Decision:**
+- `llm_assistant/schema.py` introspects `information_schema.columns` for the `marts` schema
+  live from the database on every call, rather than a hand-typed schema string that could
+  drift out of sync.
+- `llm_assistant/validator.py` uses `sqlglot` (a real SQL parser) instead of regex/keyword
+  matching: rejects anything that isn't exactly one `SELECT` statement, walks the full parse
+  tree for write/DDL node types as defense in depth, restricts table access to the `marts`
+  schema by inspecting each `Table` node's schema qualifier, and enforces/caps a row `LIMIT`.
+- The DuckDB connection the assistant executes against is opened with `read_only=True` --
+  DuckDB's actual mechanism for "this connection cannot write," which is the real equivalent
+  of the least-privilege role originally planned for Postgres/Snowflake.
+**Consequences:** two independent layers, verified separately before wiring together — the
+validator was tested against 5 cases (including a DELETE and a multi-statement SQL
+injection attempt) with zero LLM calls involved, and passed all 5 before the assistant's own
+LLM-calling code was even tested end to end.
+
+**Status: code-complete, not executed against a live API.** `llm_assistant/assistant.py`
+(the actual Claude API calls, orchestration, and one-shot repair loop) is written and ready
+to run, but exercising it costs real (if small) money, and a deliberate decision was made
+not to spend that while finalizing the project to apply. This is the same honest-scoping
+pattern as ADR-012 (Airflow was written before it was actually run) — the schema-grounding
+and validation layers, the parts that don't need paid API calls, *are* fully verified above;
+only the final "call the real model and look at a real answer" step is deferred. Running it
+just needs an `ANTHROPIC_API_KEY` in `.env` — no code changes.
